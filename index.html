@@ -126,7 +126,7 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
 
 <div class="card hidden" id="pos-card">
   <h2>Positions</h2>
-  <div class="scroll"><table id="pos"><thead><tr><th>Window</th><th>Side</th><th class="r">Contracts</th><th class="r">Entry</th><th class="r">Now</th><th class="r">P&amp;L</th><th class="r hide-s">Settles</th></tr></thead><tbody></tbody></table></div>
+  <div class="scroll"><table id="pos"><thead><tr><th>Window</th><th>Strategy</th><th>Side</th><th class="r">Contracts</th><th class="r">Entry</th><th class="r">Now</th><th class="r">P&amp;L</th><th class="r">Time left</th><th class="r hide-s">Settles</th></tr></thead><tbody></tbody></table></div>
   <div id="orders"></div>
 </div>
 
@@ -143,7 +143,7 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
   <h3 style="margin:14px 0 4px;font-size:14px">Shadow tests vs live final minute <span class="sub" id="cmp-since"></span></h3>
   <div class="scroll"><table id="cmp"><thead><tr><th>Variant</th><th class="r">Signals</th><th class="r">Filled</th><th class="r">Won</th><th class="r">Windows</th><th class="r">Per contract</th><th class="r">P&amp;L per 1 contract each</th></tr></thead><tbody></tbody></table></div>
   <div class="sub" id="cmp-rule"></div>
-  <div class="sub" style="margin-top:10px">Reversal is off (it lost money live). Learner pilot: at 7 and 5 minutes left a weighted learner (started from 60 days of history, updated after every window) buys only if it beats the fresh ask by 5¢ after fee, at $0.25 a trade. Final minute: in the last 50 seconds part of the settlement average is already fixed; I only buy when my model beats the price by the margin above.</div>
+  <div class="sub" style="margin-top:10px">Live now: learner pilot (core coins, $0.25), learner pilot on alt coins (probation, review at 30 fills), explore (live learning, 1 contract, expected to cost a little), hedged arbitrage scanner ($1/arb). Final minute is shadow-only; reversal is off. Learner pilot: at 7 and 5 minutes left a weighted learner (started from 60 days of history, updated after every window) buys only if it beats the fresh ask by 5¢ after fee, at $0.25 a trade. Final minute: in the last 50 seconds part of the settlement average is already fixed; I only buy when my model beats the price by the margin above.</div>
 </div>
 
 
@@ -170,6 +170,8 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
 
 <div class="card"><h2>Market-wide signals <span id="sig-age"></span></h2><div class="scroll"><table id="sig"><tbody></tbody></table></div></div>
 
+<div class="card"><h2>Trader's journal <span>latest 30: trades, settlements, config changes, weight updates, halts, restarts, notes</span></h2><div class="feed" id="journal"></div></div>
+<div class="card"><h2>Recent config changes <span>old → new, who and why</span></h2><div class="feed" id="cfg"></div></div>
 <div class="card"><h2>Activity</h2><div class="feed" id="feed"></div></div>
 
 <footer id="foot"></footer>
@@ -207,6 +209,7 @@ async function fetchSpot(){
 }
 function fmtNum(v){if(v==null)return"—";const a=Math.abs(v);return a>=1000?v.toLocaleString("en-US",{maximumFractionDigits:2}):a>=1?v.toFixed(4).replace(/0+$/,"").replace(/\.$/,""):v.toPrecision(5)}
 
+function tleft(c){const s=Math.round(c-Date.now()/1000);if(s<=0)return "settling";const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}h ${m}m`:`${m}:${String(x).padStart(2,"0")}`}
 function render(){
   const p=D.portfolio, m=D.milestones, r=D.results;
   const dep=p.total_deposited??D.total_deposited??D.start_bankroll;
@@ -243,7 +246,7 @@ function render(){
   const eq=D.equity||[]; $("chart-card").classList.toggle("hidden",eq.length<3); if(eq.length>=3)$("chart").innerHTML=chart(eq);
   // positions
   $("pos-card").classList.toggle("hidden",!D.positions.length&&!D.open_orders.length);
-  $("pos").querySelector("tbody").innerHTML=D.positions.map(x=>`<tr><td>${esc(x.window)}</td><td>${x.side.toUpperCase()}</td><td class="r">${(+x.contracts).toFixed(2)}</td><td class="r">${x.entry==null?"—":cents(x.entry)}</td><td class="r">${x.now==null?"—":cents(+x.now)}</td><td class="r"><span class="pill ${cls(x.unrealized)}">${sgn(x.unrealized)}</span></td><td class="r hide-s">${esc(x.settles.split(", ").pop())}</td></tr>`).join("");
+  $("pos").querySelector("tbody").innerHTML=D.positions.map(x=>`<tr><td>${esc(x.window)}</td><td class="sub">${esc(x.strategy||"")}</td><td>${x.side.toUpperCase()}</td><td class="r">${(+x.contracts).toFixed(2)}</td><td class="r">${x.entry==null?"—":cents(x.entry)}</td><td class="r">${x.now==null?"—":cents(+x.now)}</td><td class="r"><span class="pill ${cls(x.unrealized)}">${sgn(x.unrealized)}</span></td><td class="r">${x.close_ts?tleft(x.close_ts):"—"}</td><td class="r hide-s">${esc((x.settles||"").split(", ").pop())}</td></tr>`).join("");
   $("pos").classList.toggle("hidden",!D.positions.length);
   $("orders").innerHTML=D.open_orders.length?`<div class="sub" style="margin-top:10px">Resting bids: `+D.open_orders.map(o=>`${esc(o.window)} ${o.side.toUpperCase()} ${o.contracts} @ ${cents(+o.price)}`).join(" · ")+"</div>":"";
   // trades
@@ -282,7 +285,10 @@ function render(){
     $("cmp").querySelector("tbody").innerHTML=sc.rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="r">${r.entries}</td><td class="r">${r.filled}</td><td class="r">${r.wins}</td><td class="r">${r.windows}</td><td class="r">${r.per_contract_c==null?"–":(r.per_contract_c>=0?"+":"")+r.per_contract_c.toFixed(1)+"¢"}</td><td class="r">${sgn(r.pnl_per_1)}</td></tr>`).join("");
     $("cmp-rule").textContent=sc.rule; $("cmp-since").textContent="(since "+sc.since_et+")";}
   // strategies
-  $("strat").querySelector("tbody").innerHTML=Object.entries(D.strategies).map(([k,s])=>`<tr><td>${esc(k)}</td><td><span class="pill ${s.status==="active"||s.status==="live"?"pos":s.status==="disabled"||s.status==="off"?"neg":"warn"}">${esc(s.status)}</span></td><td>${esc(s.rule)}</td><td class="r">${s.placed}</td><td class="r">${s.filled}</td><td class="r">${s.settled}</td><td class="r">${sgn(s.pnl)}</td></tr>`).join("");
+  $("strat").querySelector("tbody").innerHTML=Object.entries(D.strategies).map(([k,s])=>`<tr><td>${esc(k)}</td><td><span class="pill ${s.status==="active"||s.status==="live"?"pos":s.status==="disabled"||s.status==="off"?"neg":"warn"}">${esc(s.status)}</span></td><td>${esc(s.rule)}${(D.settings||{})[k]?`<div class="sub" style="margin-top:4px">Settings: ${esc(D.settings[k])}</div>`:""}</td><td class="r">${s.placed}</td><td class="r">${s.filled}</td><td class="r">${s.settled}</td><td class="r">${sgn(s.pnl)}</td></tr>`).join("");
+  // journal + config changes
+  $("journal").innerHTML=(D.journal||[]).map(j=>`<div class="it"><div class="h"><div class="t"><span class="pill ${j.kind==="settle"?"":j.kind==="halt"||j.kind==="pause"?"neg":j.kind==="trade"?"pos":"warn"}">${esc(j.kind)}</span> ${esc(j.text)}</div><div class="tm">${esc((j.t||"").replace(/^\d+\/\d+ /,""))}</div></div></div>`).join("")||'<div class="muted">No entries yet.</div>';
+  $("cfg").innerHTML=(D.config_changes||[]).map(j=>`<div class="it"><div class="h"><div class="t">${esc(j.text)}</div><div class="tm">${esc(j.t||"")}</div></div></div>`).join("")||'<div class="muted">No config changes since the journal started (6:17 PM ET 11/23).</div>';
   // risk
   const k=D.risk; const rows=[
     ["Daily loss stop",Math.max(0,-k.daily_pnl)/k.daily_loss_stop,`${sgn(k.daily_pnl)} of -${usd(k.daily_loss_stop)}`,true],
