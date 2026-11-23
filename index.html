@@ -192,12 +192,12 @@ function render(){
   $("inpos").textContent=usd(p.positions_value);
   const idleNote=[];
   if((p.idle_cash??0)>0) idleNote.push("Idle cash is sitting in general funds and is not in the trading pool yet.");
-  if(p.trading_pnl!=null) idleNote.push("Trading-pool result vs the original $10 is "+sgn(p.trading_pnl)+".");
+  if(p.trading_pnl!=null) idleNote.push("Trading-pool result vs the "+usd(p.pool_capital??10)+" moved into it is "+sgn(p.trading_pnl)+".");
   idleNote.push("A deposit raises net worth and total deposited together, so it does not show up as profit.");
   $("idle-note").textContent=idleNote.join(" ");
   const cap=D.capital||[];
   $("capital").querySelector("tbody").innerHTML=cap.map(e=>{
-    const kind=e.kind==="initial"?"Initial trading capital":e.kind==="deposit"?"Deposit":e.kind;
+    const kind=e.kind==="initial"?"Initial trading capital":e.kind==="deposit"?"Deposit":e.kind==="transfer"?"Internal transfer (not a deposit)":e.kind;
     const fee=e.fee?`<div class="sub">${usd(e.fee)} fee</div>`:"";
     return `<tr><td class="sub">${esc(e.time_et)}</td><td>${esc(kind)}${e.note?`<div class="sub">${esc(e.note)}</div>`:""}${fee}</td><td class="r">${usd(e.amount)}</td></tr>`;
   }).join("")+(cap.length?`<tr><td class="sub"></td><td>Total deposited</td><td class="r"><b>${usd(dep)}</b></td></tr>`:"");
