@@ -61,6 +61,13 @@ svg{display:block;width:100%;height:auto}
 @media(max-width:560px){.risk .row{grid-template-columns:1fr 90px}.risk .row .bar{grid-column:1/-1;order:3}}
 .hidden{display:none}
 footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
+.rd{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.rd .c{border:1px solid var(--line);border-radius:10px;padding:10px}
+.rd .h{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}.rd .h b{font-weight:600}
+.rd svg{width:100%;height:150px;display:block}.rd .s{font-size:12px;color:var(--dim)}
+.wb{display:grid;grid-template-columns:130px 1fr 60px;gap:4px 8px;font-size:12px;align-items:center}
+.wb .t{height:10px;background:var(--line);border-radius:3px;position:relative}.wb .t i{position:absolute;top:0;bottom:0;border-radius:3px}
+.wb .t em{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--faint)}
 </style>
 </head>
 <body>
@@ -133,12 +140,29 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
 <div class="card">
   <h2>Strategies <span>the learner re-checks every 15 min</span></h2>
   <div class="scroll"><table id="strat"><thead><tr><th>Strategy</th><th>Status</th><th>Current rule</th><th class="r">Placed</th><th class="r">Filled</th><th class="r">Settled</th><th class="r">P&amp;L</th></tr></thead><tbody></tbody></table></div>
-  <h3 style="margin:14px 0 4px;font-size:14px">Shadow test: mid-window vs final minute <span class="sub" id="cmp-since"></span></h3>
+  <h3 style="margin:14px 0 4px;font-size:14px">Shadow tests vs live final minute <span class="sub" id="cmp-since"></span></h3>
   <div class="scroll"><table id="cmp"><thead><tr><th>Variant</th><th class="r">Signals</th><th class="r">Filled</th><th class="r">Won</th><th class="r">Windows</th><th class="r">Per contract</th><th class="r">P&amp;L per 1 contract each</th></tr></thead><tbody></tbody></table></div>
   <div class="sub" id="cmp-rule"></div>
-  <div class="sub" style="margin-top:10px">Reversal: after an unusually big 15-minute move, the next window reverses slightly more often (54.3% in 113k past windows), so I rest a cheap bid on the reversal side. Final minute: in the last 50 seconds part of the settlement average is already fixed; I only buy when my model beats the price by the margin above.</div>
+  <div class="sub" style="margin-top:10px">Reversal is off (it lost money live). Learner pilot: at 7 and 5 minutes left a weighted learner (started from 60 days of history, updated after every window) buys only if it beats the fresh ask by 5¢ after fee, at $0.25 a trade. Final minute: in the last 50 seconds part of the settlement average is already fixed; I only buy when my model beats the price by the margin above.</div>
 </div>
 
+
+<div class="card">
+  <h2>What I'm reading <span id="rd-sub">weighted learner checkpoints</span></h2>
+  <div class="rd" id="rd"></div>
+  <div class="sub" style="margin-top:8px">Coinbase 1-min candles with volume, dashed line = strike, blue line = CF index now, dots = Coinbase / OKX / Kraken last price, triangles = OKX/Bybit liquidations (red = longs forced out, green = shorts), size by USD. p = settlement model, q = weighted learner, mid = Kalshi.</div>
+</div>
+<div class="card">
+  <h2>Learner weights <span id="w-sub"></span></h2>
+  <div class="wb" id="wb"></div>
+  <svg id="wh" viewBox="0 0 600 120" style="width:100%;height:120px;margin-top:10px"></svg>
+  <div class="sub">Bars = current standardized weight (grey tick = 60-day starting weight). Liquidation weights start at 0. Every settled window nudges the weights and shrinks noisy ones back toward 0. Lines = weight history for the candle, volume, wick, liquidation and cross-exchange signals.</div>
+</div>
+<div class="card">
+  <h2>Shadow veto on the final-minute strategy <span>no orders</span></h2>
+  <div class="scroll"><table id="veto"><thead><tr><th>Set</th><th class="r">Signals</th><th class="r">Vetoed</th><th class="r">All, per contract</th><th class="r">Kept</th><th class="r">Vetoed ones</th></tr></thead><tbody></tbody></table></div>
+  <div class="sub" id="veto-rule"></div>
+</div>
 <div class="card risk">
   <h2>Risk limits <span id="halt"></span></h2>
   <div id="risk"></div>
@@ -229,12 +253,36 @@ function render(){
   // skips
   const sk=(D.skips||[]).concat((D.passed||[]).map(w=>({ts:null,text:`${w.window}: ${w.strategy} passed. ${w.why}`,t:w.time}))).slice(0,14); $("skips-card").classList.toggle("hidden",!sk.length);
   $("skips").innerHTML=sk.map(a=>`<div class="it"><div class="h"><div class="t">${esc(a.text)}</div><div class="tm">${a.ts?tfmt(a.ts):esc((a.t||"").replace(/^\w+ \d+, /,""))}</div></div></div>`).join("");
+  // reading panel
+  if(D.reading){const R=D.reading;const ks=Object.keys(R).sort();
+    $("rd").innerHTML=ks.map(k=>{const r=R[k],c=r.candles||[];if(!c.length)return"";
+      const W=300,H=150,VH=28,ph=H-VH-8;let lo=Math.min(...c.map(x=>x[3]),r.strike,r.cf),hi=Math.max(...c.map(x=>x[2]),r.strike,r.cf);
+      Object.values(r.spots||{}).forEach(v=>{if(v){lo=Math.min(lo,v);hi=Math.max(hi,v)}});const pad=(hi-lo)*0.08||1;lo-=pad;hi+=pad;
+      const t0=c[0][0],t1=c[c.length-1][0]+60,X=t=>(t-t0)/(t1-t0)*(W-40),Y=v=>4+(hi-v)/(hi-lo)*ph,bw=(W-40)/c.length*0.6,vmax=Math.max(...c.map(x=>x[5]))||1;
+      let g=c.map(x=>{const up=x[4]>=x[1],col=up?"var(--green)":"var(--red)",cx=X(x[0]+30);return `<line x1="${cx}" x2="${cx}" y1="${Y(x[2])}" y2="${Y(x[3])}" stroke="${col}"/><rect x="${cx-bw/2}" y="${Y(Math.max(x[1],x[4]))}" width="${bw}" height="${Math.max(1,Math.abs(Y(x[1])-Y(x[4])))}" fill="${col}"/><rect x="${cx-bw/2}" y="${H-(x[5]/vmax)*VH}" width="${bw}" height="${(x[5]/vmax)*VH}" fill="var(--faint)" opacity=".5"/>`}).join("");
+      g+=`<line x1="0" x2="${W-40}" y1="${Y(r.strike)}" y2="${Y(r.strike)}" stroke="var(--txt)" stroke-dasharray="4 3" opacity=".7"/><line x1="0" x2="${W-40}" y1="${Y(r.cf)}" y2="${Y(r.cf)}" stroke="var(--accent)" opacity=".8"/>`;
+      const ex=Object.entries(r.spots||{}).filter(e=>e[1]);g+=ex.map((e,i)=>`<circle cx="${W-30+i*10}" cy="${Y(e[1])}" r="3" fill="var(--accent)" opacity="${.5+i*.2}"><title>${esc(e[0])} ${e[1]}</title></circle>`).join("");
+      const lmax=Math.max(1,...(r.liqs||[]).map(l=>l.usd));g+=(r.liqs||[]).filter(l=>l.t>=t0&&l.px).map(l=>{const sz=3+7*Math.sqrt(l.usd/lmax),cx=X(l.t),cy=Y(Math.min(hi,Math.max(lo,l.px))),d=l.side==="long"?1:-1;return `<path d="M${cx-sz/2},${cy-d*sz/2} L${cx+sz/2},${cy-d*sz/2} L${cx},${cy+d*sz/2} Z" fill="${l.side==="long"?"var(--red)":"var(--green)"}" opacity=".8"><title>${esc(l.src)} ${l.side} liq $${Math.round(l.usd)}</title></path>`}).join("");
+      const mid=((r.yes_bid+r.yes_ask)/2*100).toFixed(0),left=Math.max(0,Math.round(r.close_ts-Date.now()/1000));
+      return `<div class="c"><div class="h"><b>${esc(k)}</b><span class="s">checkpoint T-${Math.round(r.cp/60)}:00 · ${left>0?Math.floor(left/60)+"m left":"window closed"}</span></div><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg><div class="s">p ${(r.p_model*100).toFixed(0)}% · q ${(r.q*100).toFixed(0)}% · mid ${mid}¢ · strike ${r.strike}</div></div>`}).join("")||'<div class="sub">Waiting for the next checkpoint (T-7, T-5, T-3, T-1).</div>';}
+  // weights
+  if(D.weights&&D.weights.current){const cur=D.weights.current.w,ini=(D.weights.init||{}).w||{},ks=Object.keys(cur);const m=Math.max(0.5,...ks.map(k=>Math.abs(cur[k])),...ks.map(k=>Math.abs(ini[k]||0)));
+    $("w-sub").textContent=`${D.weights.current.n_updates} online updates · last: ${D.weights.current.note||""}`;
+    $("wb").innerHTML=ks.map(k=>{const v=cur[k],w=Math.abs(v)/m*50,l=v>=0?50:50-w,i0=50+(ini[k]||0)/m*50;return `<div>${esc(k)}</div><div class="t"><i style="left:${l}%;width:${w}%;background:${v>=0?"var(--green)":"var(--red)"}"></i><em style="left:${i0}%"></em></div><div class="r">${v.toFixed(3)}</div>`}).join("");
+    const H=D.weights.history||[],fs=["ret1_z","ret5_z","ret15_z","voltrend_x_lead","wick_score","liq_imb","liq_sweep","xex_dnorm"],cols=["#2f5bd3","#1f8a4c","#9a6b00","#c2410c","#7c3aed","#db2777","#0891b2","#64748b"];
+    if(H.length>1){let mm=0.05;H.forEach(h=>fs.forEach(f=>mm=Math.max(mm,Math.abs(h.w[f]||0))));const X=i=>i/(H.length-1)*590+5,Y=v=>60-v/mm*55;
+      $("wh").innerHTML=`<line x1="0" x2="600" y1="60" y2="60" stroke="var(--line)"/>`+fs.map((f,j)=>`<polyline fill="none" stroke="${cols[j]}" stroke-width="1.5" points="${H.map((h,i)=>X(i)+","+Y(h.w[f]||0)).join(" ")}"><title>${f}</title></polyline>`).join("");}
+    else $("wh").innerHTML=`<text x="10" y="60" font-size="12" fill="var(--faint)">History appears after the first settled window.</text>`;}
+  // veto
+  if(D.veto_shadow){const V=D.veto_shadow,f=b=>b.per_contract_c==null?"–":(b.per_contract_c>=0?"+":"")+b.per_contract_c.toFixed(1)+"¢ ("+b.windows+" w)";
+    $("veto").querySelector("tbody").innerHTML=[["Live final-minute trades",V.live_trades],["Final-minute signals (shadow)",V.shadow_signals]].map(([n,b])=>`<tr><td>${n}</td><td class="r">${b.n}</td><td class="r">${b.n_vetoed}</td><td class="r">${f(b.all)}</td><td class="r">${f(b.kept)}</td><td class="r">${f(b.vetoed)}</td></tr>`).join("");
+    $("veto-rule").textContent=V.rule;}
   // shadow compare
   if(D.shadow_compare){const sc=D.shadow_compare;
     $("cmp").querySelector("tbody").innerHTML=sc.rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="r">${r.entries}</td><td class="r">${r.filled}</td><td class="r">${r.wins}</td><td class="r">${r.windows}</td><td class="r">${r.per_contract_c==null?"–":(r.per_contract_c>=0?"+":"")+r.per_contract_c.toFixed(1)+"¢"}</td><td class="r">${sgn(r.pnl_per_1)}</td></tr>`).join("");
     $("cmp-rule").textContent=sc.rule; $("cmp-since").textContent="(since "+sc.since_et+")";}
   // strategies
-  $("strat").querySelector("tbody").innerHTML=Object.entries(D.strategies).map(([k,s])=>`<tr><td>${esc(k)}</td><td><span class="pill ${s.status==="active"?"pos":s.status==="disabled"?"neg":"warn"}">${esc(s.status)}</span></td><td>${esc(s.rule)}</td><td class="r">${s.placed}</td><td class="r">${s.filled}</td><td class="r">${s.settled}</td><td class="r">${sgn(s.pnl)}</td></tr>`).join("");
+  $("strat").querySelector("tbody").innerHTML=Object.entries(D.strategies).map(([k,s])=>`<tr><td>${esc(k)}</td><td><span class="pill ${s.status==="active"||s.status==="live"?"pos":s.status==="disabled"||s.status==="off"?"neg":"warn"}">${esc(s.status)}</span></td><td>${esc(s.rule)}</td><td class="r">${s.placed}</td><td class="r">${s.filled}</td><td class="r">${s.settled}</td><td class="r">${sgn(s.pnl)}</td></tr>`).join("");
   // risk
   const k=D.risk; const rows=[
     ["Daily loss stop",Math.max(0,-k.daily_pnl)/k.daily_loss_stop,`${sgn(k.daily_pnl)} of -${usd(k.daily_loss_stop)}`,true],
