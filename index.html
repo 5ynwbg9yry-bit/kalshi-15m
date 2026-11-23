@@ -75,16 +75,22 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
   <div class="total" id="nw">—</div>
   <div class="chg" id="chg"></div>
   <div class="grid">
-    <div class="kv"><div class="k">Cash</div><div class="v" id="cash"></div></div>
+    <div class="kv"><div class="k">Total deposited</div><div class="v" id="deposited"></div></div>
+    <div class="kv"><div class="k">Trading pool</div><div class="v" id="pool"></div></div>
+    <div class="kv"><div class="k">Idle cash</div><div class="v" id="idle"></div></div>
     <div class="kv"><div class="k">In positions</div><div class="v" id="inpos"></div></div>
-    <div class="kv"><div class="k">Net result after fees</div><div class="v" id="rpnl"></div></div>
-    <div class="kv"><div class="k">Fees paid</div><div class="v" id="fees"></div></div>
   </div>
+  <div class="sub" id="idle-note" style="margin-top:10px"></div>
   <div class="prog">
     <div class="bar"><i id="pbar"></i></div>
     <div class="ticks"><span id="pfrom">$10</span><span id="ptext"></span><b id="pnext"></b></div>
     <div class="sub" id="ladder" style="margin-top:6px"></div>
   </div>
+</div>
+
+<div class="card" id="capital-card">
+  <h2>Capital <span>deposits in, so P&amp;L stays honest</span></h2>
+  <div class="scroll"><table id="capital"><thead><tr><th>When</th><th>What</th><th class="r">Amount</th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <div class="card">
@@ -109,7 +115,7 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
   <div class="muted" id="notrades"></div>
 </div>
 
-<div class="card hidden" id="chart-card"><h2>Net worth over time</h2><div id="chart"></div></div>
+<div class="card hidden" id="chart-card"><h2>Trading pool over time <span>excludes undeployed deposits so they don't look like profit</span></h2><div id="chart"></div></div>
 
 <div class="card hidden" id="pos-card">
   <h2>Positions</h2>
@@ -176,16 +182,30 @@ function fmtNum(v){if(v==null)return"—";const a=Math.abs(v);return a>=1000?v.t
 
 function render(){
   const p=D.portfolio, m=D.milestones, r=D.results;
+  const dep=p.total_deposited??D.total_deposited??D.start_bankroll;
   $("nw").textContent=usd(p.net_worth);
-  $("chg").innerHTML=`<span class="pill ${cls(p.pnl_since_start)}">${sgn(p.pnl_since_start)} (${p.pnl_pct.toFixed(2)}%)</span> <span class="muted">since start</span>`;
-  $("started").textContent="started "+D.start_et.replace("Nov ","Nov ")+" with "+usd(D.start_bankroll);
-  $("cash").textContent=usd(p.cash); $("inpos").textContent=usd(p.positions_value);
-  $("rpnl").innerHTML=`<span class="${p.pnl_since_start>0?"up":p.pnl_since_start<0?"dn":""}">${sgn(r.realized_pnl)}</span>`; $("fees").textContent=usd(r.fees_paid,4);
+  $("chg").innerHTML=`<span class="pill ${cls(p.pnl_since_start)}">${sgn(p.pnl_since_start)} (${(p.pnl_pct??0).toFixed(2)}%)</span> <span class="muted">P&amp;L = net worth − deposits</span>`;
+  $("started").textContent="whole account · started "+D.start_et+" with "+usd(D.start_bankroll);
+  $("deposited").textContent=usd(dep);
+  $("pool").textContent=usd(p.trading_pool_value??p.trading_pool_cash??p.cash);
+  $("idle").textContent=usd(p.idle_cash??0);
+  $("inpos").textContent=usd(p.positions_value);
+  const idleNote=[];
+  if((p.idle_cash??0)>0) idleNote.push("Idle cash is sitting in general funds and is not in the trading pool yet.");
+  if(p.trading_pnl!=null) idleNote.push("Trading-pool result vs the original $10 is "+sgn(p.trading_pnl)+".");
+  idleNote.push("A deposit raises net worth and total deposited together, so it does not show up as profit.");
+  $("idle-note").textContent=idleNote.join(" ");
+  const cap=D.capital||[];
+  $("capital").querySelector("tbody").innerHTML=cap.map(e=>{
+    const kind=e.kind==="initial"?"Initial trading capital":e.kind==="deposit"?"Deposit":e.kind;
+    const fee=e.fee?`<div class="sub">${usd(e.fee)} fee</div>`:"";
+    return `<tr><td class="sub">${esc(e.time_et)}</td><td>${esc(kind)}${e.note?`<div class="sub">${esc(e.note)}</div>`:""}${fee}</td><td class="r">${usd(e.amount)}</td></tr>`;
+  }).join("")+(cap.length?`<tr><td class="sub"></td><td>Total deposited</td><td class="r"><b>${usd(dep)}</b></td></tr>`:"");
   const prev=[D.start_bankroll,...m.list.filter(x=>x<=p.net_worth)].pop();
   $("pbar").style.width=Math.max(0.6,Math.min(100,m.progress_pct_to_next))+"%";
   $("pfrom").textContent=usd(prev,0); $("pnext").textContent=usd(m.next,0);
   $("ptext").textContent=`${m.progress_pct_to_next.toFixed(2)}% · ${m.x_needed}× to go`;
-  $("ladder").textContent="Milestones: "+m.list.map(x=>(p.net_worth>=x?"✓ ":"")+usd(x,0)).join("  →  ");
+  $("ladder").textContent="Milestones (on net worth): "+m.list.map(x=>(p.net_worth>=x?"✓ ":"")+usd(x,0)).join("  →  ");
   const n=D.now; $("f-doing").textContent=n.doing; $("f-why").textContent=n.why; $("f-expect").textContent=n.expect; $("f-next").textContent=n.next;
   $("state").innerHTML=D.risk.halted?`<span class="pill neg">paused</span>`:(D.health.trader?`<span class="pill pos">trading live</span>`:`<span class="pill warn">trader offline</span>`);
   renderMarket();
@@ -214,7 +234,7 @@ function render(){
     ["Open exposure",k.open_exposure/k.max_open_exposure,`${usd(k.open_exposure)} of ${usd(k.max_open_exposure)}`],
     ["Losses in a row",k.loss_streak/k.max_loss_streak,`${k.loss_streak} of ${k.max_loss_streak}`,true],
     ["Trades today",k.trades_today/k.max_trades_per_day,`${k.trades_today} of ${k.max_trades_per_day}`],
-    ["Hard floor (halt below)",0,`${usd(p.net_worth)} vs ${usd(k.hard_floor)}`]];
+    ["Hard floor (halt below)",0,`${usd(p.trading_pool_value??p.net_worth)} vs ${usd(k.hard_floor)}`]];
   $("risk").innerHTML=rows.map(x=>`<div class="row"><div>${x[0]}</div><div class="bar ${x[3]?"r":""}"><i style="width:${Math.min(100,x[1]*100)}%"></i></div><div class="r" style="text-align:right">${x[2]}</div></div>`).join("")+`<div class="sub" style="margin-top:6px">Max ${usd(k.max_trade_dollars)} and 3 contracts per trade · at most 2 same-direction bets per window.</div>`;
   $("halt").innerHTML=k.halted?`<span class="pill neg">${esc(k.halt_reasons.join(", "))}</span>`:`<span class="pill pos">all clear</span>`;
   // signals
