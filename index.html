@@ -137,6 +137,12 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
 
 <div class="card hidden" id="skips-card"><h2>Why I skipped <span>latest checks</span></h2><div class="feed" id="skips"></div></div>
 
+<div class="card" id="desk-card">
+  <h2>Desk (explore) results <span>live explore trades, from the trade log; refreshed every publish</span></h2>
+  <div class="scroll"><table id="desk"><tbody></tbody></table></div>
+  <div class="sub" id="desk-w" style="margin-top:6px"></div>
+</div>
+
 <div class="card">
   <h2>Strategies <span>the learner re-checks every 15 min</span></h2>
   <div class="scroll"><table id="strat"><thead><tr><th>Strategy</th><th>Status</th><th>Current rule</th><th class="r">Placed</th><th class="r">Filled</th><th class="r">Settled</th><th class="r">P&amp;L</th></tr></thead><tbody></tbody></table></div>
@@ -287,6 +293,11 @@ function render(){
     $("cmp").querySelector("tbody").innerHTML=sc.rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="r">${r.entries}</td><td class="r">${r.filled}</td><td class="r">${r.wins}</td><td class="r">${r.windows}</td><td class="r">${r.per_contract_c==null?"–":(r.per_contract_c>=0?"+":"")+r.per_contract_c.toFixed(1)+"¢"}</td><td class="r">${sgn(r.pnl_per_1)}</td></tr>`).join("");
     $("cmp-rule").textContent=sc.rule; $("cmp-since").textContent="(since "+sc.since_et+")";}
   // strategies
+  try{const K=D.explore_desk;if(K){const pr=(t,v)=>`<tr><td>${esc(t)}</td><td class="r">${v}</td></tr>`;
+    $("desk").querySelector("tbody").innerHTML=pr("Fills",`${K.fills} (${K.settled} settled${K.open?`, ${K.open} open`:""})`)+pr("Wins / losses",`${K.wins} / ${K.losses}`)
+      +pr("Current streak",K.streak_kind?`${K.streak} ${K.streak_kind}${K.streak===1?"":K.streak_kind==="loss"?"es":"s"}`:"–")+pr("Desk P&amp;L after fees",sgn(K.pnl)+` <span class="sub">(fees $${K.fees.toFixed(4)})</span>`)
+      +pr("Budget used",`$${K.budget_used.toFixed(2)} of $${Number(K.budget).toFixed(2)}`)+pr("Review",`at ${K.review_fills} fills`);
+    $("desk-w").textContent="Learned weights (normalized, sum 1; "+K.weight_samples+" settled signals): "+Object.entries(K.weights).map(([n,v])=>`${n} ${v.toFixed(3)}`).join(", ");}}catch(e){}
   try{const X=D.explore_hits;if(X){const W=((D.settings||{})["Explore (live learning)"]||"");const wm={};(W.match(/weights=([^;]*)/)||["",""])[1].replace(/\(.*$/,"").split(",").forEach(t=>{const m=t.trim().match(/^(.*) ([0-9.]+)$/);if(m)wm[m[1]]=m[2]});
     $("xh-n").textContent=`${X.samples} settled signals (taken and skipped, 1 per market and side), ${X.wins} won`;
     $("xhits").querySelector("tbody").innerHTML=X.rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="r">${r.present_n}</td><td class="r">${r.present_win==null?"–":(r.present_win*100).toFixed(0)+"%"}</td><td class="r">${r.absent_n}</td><td class="r">${r.absent_win==null?"–":(r.absent_win*100).toFixed(0)+"%"}</td><td class="r">${esc(wm[r.name]||"")}</td></tr>`).join("")}}catch(e){}
