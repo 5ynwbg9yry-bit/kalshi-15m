@@ -296,7 +296,7 @@ function render(){
   try{const K=D.explore_desk;if(K){const pr=(t,v)=>`<tr><td>${esc(t)}</td><td class="r">${v}</td></tr>`;
     $("desk").querySelector("tbody").innerHTML=pr("Fills",`${K.fills} (${K.settled} settled${K.open?`, ${K.open} open`:""})`)+pr("Wins / losses",`${K.wins} / ${K.losses}`)
       +pr("Current streak",K.streak_kind?`${K.streak} ${K.streak_kind}${K.streak===1?"":K.streak_kind==="loss"?"es":"s"}`:"–")+pr("Desk P&amp;L after fees",sgn(K.pnl)+` <span class="sub">(fees $${K.fees.toFixed(4)})</span>`)
-      +pr("Budget used",`$${K.budget_used.toFixed(2)} of $${Number(K.budget).toFixed(2)}`)+pr("Review",`at ${K.review_fills} fills`);
+      +pr("Desk state",K.state?`<span class="pill ${K.state==="live"?"pos":"neg"}">${esc(K.state)}</span>`:"–")+pr("Budget used (net loss)",`$${K.budget_used.toFixed(2)} of $${Number(K.budget).toFixed(2)}`+(K.staked!=null?` <span class="sub">(pauses only at net P&amp;L ≤ −$${Number(K.budget).toFixed(2)}; staked so far $${K.staked.toFixed(2)})</span>`:""))+pr("Review",`at ${K.review_fills} fills`);
     $("desk-w").textContent="Learned weights (normalized, sum 1; "+K.weight_samples+" settled signals): "+Object.entries(K.weights).map(([n,v])=>`${n} ${v.toFixed(3)}`).join(", ");}}catch(e){}
   try{const X=D.explore_hits;if(X){const W=((D.settings||{})["Explore (live learning)"]||"");const wm={};(W.match(/weights=([^;]*)/)||["",""])[1].replace(/\(.*$/,"").split(",").forEach(t=>{const m=t.trim().match(/^(.*) ([0-9.]+)$/);if(m)wm[m[1]]=m[2]});
     $("xh-n").textContent=`${X.samples} settled signals (taken and skipped, 1 per market and side), ${X.wins} won`;
