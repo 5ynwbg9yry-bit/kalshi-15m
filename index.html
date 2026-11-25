@@ -230,6 +230,10 @@ function renderChanges(){
     +`<span class="pill ${it.status==="live"?"pos":"warn"}" style="flex:none;min-width:64px;text-align:center">${it.status==="live"?"live":"pending"}</span>`
     +`<div><div><b>${esc(it.when||"")}</b> · ${esc(it.title||"")}</div><div class="muted" style="font-size:14px">${esc(it.text||"")}`
     +(it.status!=="live"&&it.pending_why&&it.pending_why.length?` <i>(${esc(it.pending_why.join("; "))})</i>`:"")+`</div></div></div>`).join("")
+    +(()=>{const g=D.pilot_gate,e=D.exit_shadow,L=[];
+      if(g&&g.enabled)L.push(`Pilot accuracy gate: <b>${g.live?"live (placing orders)":"observing (no orders)"}</b>, ${g.wins}/${g.n} right${g.acc!=null?` (${(g.acc*100).toFixed(0)}%)`:""}; needs ≥${Math.round((g.min_acc||0.6)*100)}% over ≥${g.min_trades} calls`);
+      if(e)L.push(`Early-exit shadow (desk, no sells): ${e.triggers} trigger${e.triggers===1?"":"s"}, ${e.settled} settled, would have ${e.saved_total>=0?"saved":"cost"} $${Math.abs(e.saved_total).toFixed(2)}`+(e.last?` · last: ${esc(e.last.window)} ${esc(String(e.last.side).toUpperCase())}, ${esc(e.last.why)}`:""));
+      return L.map(t=>`<div class="sub" style="margin-top:6px">${t}</div>`).join("")})()
     +(c.trader_started_et?`<div class="sub" style="margin-top:6px">Trader last started ${esc(c.trader_started_et)}</div>`:"");
 }
 function render(){
