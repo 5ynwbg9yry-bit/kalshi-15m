@@ -77,6 +77,11 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
   <div class="live"><span class="dot" id="dot"></span><span id="upd">loading…</span><span id="clock"></span></div>
 </header>
 
+<div class="card hidden" id="changes-card">
+  <h2>Desk changes <span id="changes-sub">live = in the running bot now; pending = not applied yet</span></h2>
+  <div id="changes"></div>
+</div>
+
 <div class="card">
   <h2>Net worth <span id="started"></span></h2>
   <div class="total" id="nw">—</div>
@@ -218,7 +223,17 @@ async function fetchSpot(){
 function fmtNum(v){if(v==null)return"—";const a=Math.abs(v);return a>=1000?v.toLocaleString("en-US",{maximumFractionDigits:2}):a>=1?v.toFixed(4).replace(/0+$/,"").replace(/\.$/,""):v.toPrecision(5)}
 
 function tleft(c){const s=Math.round(c-Date.now()/1000);if(s<=0)return "settling";const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}h ${m}m`:`${m}:${String(x).padStart(2,"0")}`}
+function renderChanges(){
+  const c=D.desk_changes, el=$("changes-card"); if(!c||!c.items||!c.items.length){el.classList.add("hidden");return}
+  el.classList.remove("hidden");
+  $("changes").innerHTML=c.items.map(it=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)">`
+    +`<span class="pill ${it.status==="live"?"pos":"warn"}" style="flex:none;min-width:64px;text-align:center">${it.status==="live"?"live":"pending"}</span>`
+    +`<div><div><b>${esc(it.when||"")}</b> · ${esc(it.title||"")}</div><div class="muted" style="font-size:14px">${esc(it.text||"")}`
+    +(it.status!=="live"&&it.pending_why&&it.pending_why.length?` <i>(${esc(it.pending_why.join("; "))})</i>`:"")+`</div></div></div>`).join("")
+    +(c.trader_started_et?`<div class="sub" style="margin-top:6px">Trader last started ${esc(c.trader_started_et)}</div>`:"");
+}
 function render(){
+  try{renderChanges()}catch(e){console.error(e)}
   const p=D.portfolio, m=D.milestones, r=D.results;
   const dep=p.total_deposited??D.total_deposited??D.start_bankroll;
   $("nw").textContent=usd(p.net_worth);
