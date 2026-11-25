@@ -142,6 +142,12 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
 
 <div class="card hidden" id="skips-card"><h2>Why I skipped <span>latest checks</span></h2><div class="feed" id="skips"></div></div>
 
+<div class="card hidden" id="sc-card">
+  <h2>Shadow candidates <span id="sc-sub">no orders; hypothetical $2.50 per trade at the ask 2 s after each decision, fees included</span></h2>
+  <div class="scroll"><table id="sc"><thead><tr><th>Candidate</th><th class="r">Windows</th><th class="r">Trades</th><th class="r">W-L</th><th class="r">Per contract</th><th class="r">Total at $2.50</th><th class="r">Cluster t</th><th class="r">Top-3 windows</th><th>Go-live bar</th></tr></thead><tbody></tbody></table></div>
+  <div class="sub" id="sc-note" style="margin-top:6px"></div>
+</div>
+
 <div class="card" id="desk-card">
   <h2>Desk (explore) results <span>live explore trades, from the trade log; refreshed every publish</span></h2>
   <div class="scroll"><table id="desk"><tbody></tbody></table></div>
@@ -238,8 +244,19 @@ function renderChanges(){
       return L.map(t=>`<div class="sub" style="margin-top:6px">${t}</div>`).join("")})()
     +(c.trader_started_et?`<div class="sub" style="margin-top:6px">Trader last started ${esc(c.trader_started_et)}</div>`:"");
 }
+function renderSC(){
+  const s=D.shadow_cands, el=$("sc-card"); if(!s||!s.cands){el.classList.add("hidden");return} el.classList.remove("hidden");
+  const ok=b=>b?'<span class="pill pos">✓</span>':'<span class="pill warn">✗</span>';
+  $("sc").querySelector("tbody").innerHTML=s.cands.map(c=>`<tr><td>${esc(c.name)}${c.open?` <span class="muted">(${c.open} open)</span>`:""}${c.last?`<div class="muted" style="font-size:12px">last: ${esc(c.last)}</div>`:""}</td>`
+    +`<td class="r">${c.windows}</td><td class="r">${c.trades}</td><td class="r">${c.wins}-${c.losses}</td>`
+    +`<td class="r">${c.pc==null?"—":(c.pc>=0?"+":"−")+Math.abs(c.pc*100).toFixed(1)+"¢"}</td><td class="r">${(c.total>=0?"+":"−")+"$"+Math.abs(c.total).toFixed(2)}</td>`
+    +`<td class="r">${c.t==null?"—":c.t.toFixed(2)}</td><td class="r">${c.top3_share==null?"—":Math.round(c.top3_share*100)+"% of profit"}</td>`
+    +`<td style="white-space:nowrap">${ok(c.bar.windows)} 100+ windows ${ok(c.bar.per_contract)} >2¢ ${ok(c.bar.t)} t>2 ${ok(c.bar.not_top3)} not top-3 driven${c.passes?' <b>· passes</b>':""}</td></tr>`).join("");
+  $("sc-note").textContent=`Shadow only since ${s.since_et||"—"}: no orders are ever sent. Go-live bar: 100+ separate windows, more than 2¢ per contract after fees, cluster t above 2 (each window counted once), and still profitable without its best 3 windows.`+(s.collector_stale_last_hour?` Collector stalled ${s.collector_stale_last_hour}× in the last hour.`:"");
+}
 function render(){
   try{renderChanges()}catch(e){console.error(e)}
+  try{renderSC()}catch(e){console.error(e)}
   const p=D.portfolio, m=D.milestones, r=D.results;
   const dep=p.total_deposited??D.total_deposited??D.start_bankroll;
   $("nw").textContent=usd(p.net_worth);
