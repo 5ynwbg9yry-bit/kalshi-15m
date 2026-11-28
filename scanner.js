@@ -73,7 +73,7 @@ function render(){
     const wr=L.wr!=null?Math.round(L.wr*100)+"%":"—";
     const extra=[L.n?`${L.n} trade${L.n===1?"":"s"}`:null, L.skips?`${L.skips} skipped`:null, L.cancels?`${L.cancels} cancelled`:null].filter(Boolean).join(" · ");
     return `<tr><td><b>${id}</b> ${esc(label)}</td><td class="r">${L.n||0}</td><td class="r">${rec}</td><td class="r">${wr}</td><td class="r ${pnl>0?"up":pnl<0?"dn":""}">${pnlTxt}</td></tr>`+(extra?``:``)};
-  const names={A:"open ask (~10s)",B:"first-minute ask",C:"48¢ rest (fill if printed ≤48¢ before 3 min left)"};
+  const names={A:"open ask (~10s), 3× ranging",B:"first-minute ask, 3× ranging",C:"48¢ rest (print ≤48¢ before 3 min left), 3× ranging",D:"filtered (wick≥10%, gap<0.3, ≥2.5×, ask≤48¢) paper only"};
   let live="";
   (P.open||[]).forEach(o=>{live+=`<div>Open ${esc(o.leg||"")} paper: <b>buy ${esc(o.side)}</b> ${esc((o.ticker||"").slice(-4))} at ${c$(o.px)} (fee ${(o.fee||0).toFixed(3)}) · hold to settlement${o.bid!=null?" · bid now "+c$(o.bid):""}</div>`});
   if(P.pending){const q=P.pending;live+=`<div>Window ${esc((q.ticker||"").slice(-4))}: waiting to lock ${q.a_locked?"":"A "}${q.b_locked?"":"B "}C=${esc(q.c_state||"watching")} · last quote ${q.last_ask!=null?c$(q.last_ask):"—"}</div>`}
@@ -88,9 +88,9 @@ function render(){
     const cls=r.type==="settle"?(r.won?"win":"loss"):(r.type==="skip"||r.type==="cancel"?"warn":"");
     return `<div class="it"><div class="h"><span class="tag ${cls}">${esc(lab.trim())}</span><span class="t">${txt}</span><span class="tm">${r.ts?tm(r.ts):""}</span></div></div>`;
   }).join("");
-  $("#sc-paper").innerHTML=`<h2>Paper track record · 3× range fade <span>A / B / C · 1 contract · official settlement · no orders</span></h2>
+  $("#sc-paper").innerHTML=`<h2>Paper track record · 3× range fade <span>A / B / C / D · 1 contract · official settlement · no orders</span></h2>
     <div class="scroll"><table><thead><tr><th>Leg</th><th class="r">Trades</th><th class="r">W–L</th><th class="r">Win rate</th><th class="r">P&amp;L</th></tr></thead><tbody>
-    ${row("A",names.A)+row("B",names.B)+row("C",names.C)}</tbody></table></div>
+    ${row("A",names.A)+row("B",names.B)+row("C",names.C)+row("D",names.D)}</tbody></table></div>
     <div class="sub" style="margin:8px 0">${esc(P.fee_note||"A/B taker fee 0.07·p·(1−p); C maker fee 0 if the series is quadratic.")}</div>
     ${live}${rows?`<div class="feed" style="margin-top:8px">${rows}</div>`:""}`;
 
