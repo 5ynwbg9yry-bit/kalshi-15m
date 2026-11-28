@@ -261,7 +261,7 @@ function render(){
   const p=D.portfolio, m=D.milestones, r=D.results;
   const dep=p.total_deposited??D.total_deposited??D.start_bankroll;
   $("nw").textContent=usd(p.net_worth);
-  $("chg").innerHTML=`<span class="pill ${cls(p.pnl_since_start)}">${sgn(p.pnl_since_start)} (${(p.pnl_pct??0).toFixed(2)}%)</span> <span class="muted">P&amp;L = net worth − deposits</span>`;
+  $("chg").innerHTML=`<span class="pill ${cls(p.pnl_since_start)}">${sgn(p.pnl_since_start)} (${(p.pnl_pct??0).toFixed(2)}%)</span> <span class="muted">Bot P&amp;L after fees (withdrawals and Jehmeel&apos;s manual trades are under Capital, not bot P&amp;L)</span>`;
   $("started").textContent="whole account · started "+D.start_et+" with "+usd(D.start_bankroll);
   $("deposited").textContent=usd(dep);
   $("pool").textContent=usd(p.trading_pool_value??p.trading_pool_cash??p.cash);
@@ -269,15 +269,17 @@ function render(){
   $("inpos").textContent=usd(p.positions_value);
   const idleNote=[];
   if((p.idle_cash??0)>0) idleNote.push("Idle cash is sitting in general funds and is not in the trading pool yet.");
-  if(p.trading_pnl!=null) idleNote.push("Trading-pool result vs the "+usd(p.pool_capital??10)+" moved into it is "+sgn(p.trading_pnl)+".");
+  if(p.trading_pnl!=null) idleNote.push("Bot P&amp;L after fees is "+sgn(p.trading_pnl)+".");
+  if((p.total_withdrawn??0)>0) idleNote.push("Jehmeel withdrew "+usd(p.total_withdrawn)+" (not a bot loss).");
+  if(p.manual_pnl!=null && p.manual_pnl!==0) idleNote.push("Jehmeel\'s own manual trades, not the bot, are "+sgn(p.manual_pnl)+".");
   idleNote.push("A deposit raises net worth and total deposited together, so it does not show up as profit.");
   $("idle-note").textContent=idleNote.join(" ");
   const cap=D.capital||[];
   $("capital").querySelector("tbody").innerHTML=cap.map(e=>{
-    const kind=e.kind==="initial"?"Initial trading capital":e.kind==="deposit"?"Deposit":e.kind==="transfer"?"Internal transfer (not a deposit)":e.kind;
+    const kind=e.kind==="initial"?"Initial trading capital":e.kind==="deposit"?"Deposit":e.kind==="transfer"?"Internal transfer (not a deposit)":e.kind==="withdrawal"?"Withdrawal (Jehmeel)":e.kind==="manual"?"Manual activity (Jehmeel)":e.kind;
     const fee=e.fee?`<div class="sub">${usd(e.fee)} fee</div>`:"";
-    return `<tr><td class="sub">${esc(e.time_et)}</td><td>${esc(kind)}${e.note?`<div class="sub">${esc(e.note)}</div>`:""}${fee}</td><td class="r">${usd(e.amount)}</td></tr>`;
-  }).join("")+(cap.length?`<tr><td class="sub"></td><td>Total deposited</td><td class="r"><b>${usd(dep)}</b></td></tr>`:"");
+    return `<tr><td class="sub">${esc(e.time_et)}</td><td>${esc(kind)}${e.note?`<div class="sub">${esc(e.note)}</div>`:""}${fee}</td><td class="r">${usd((e.kind==="withdrawal"?-Math.abs(e.amount):e.kind==="manual"?(e.pnl??e.amount):e.amount))}</td></tr>`;
+  }).join("")+(cap.length?`<tr><td class="sub"></td><td>Total deposited</td><td class="r"><b>${usd(dep)}</b></td></tr>`+((p.total_withdrawn??0)?`<tr><td class="sub"></td><td>Withdrawals (Jehmeel)</td><td class="r"><b>${usd(-Math.abs(p.total_withdrawn))}</b></td></tr>`:"")+((p.manual_pnl!=null&&p.manual_pnl!==0)?`<tr><td class="sub"></td><td>Manual activity (Jehmeel)</td><td class="r"><b>${sgn(p.manual_pnl)}</b></td></tr>`:"")+`<tr><td class="sub"></td><td>Bot P&amp;L after fees</td><td class="r"><b>${sgn(p.pnl_since_start)}</b></td></tr>`:"");
   const prev=[D.start_bankroll,...m.list.filter(x=>x<=p.net_worth)].pop();
   $("pbar").style.width=Math.max(0.6,Math.min(100,m.progress_pct_to_next))+"%";
   $("pfrom").textContent=usd(prev,0); $("pnext").textContent=usd(m.next,0);
