@@ -77,6 +77,8 @@ footer{font-size:12px;color:var(--faint);text-align:center;margin-top:24px}
   <div class="live"><span class="dot" id="dot"></span><span id="upd">loading…</span><span id="clock"></span></div>
 </header>
 
+<div class="card" id="scanner-card"></div>
+
 <div class="card hidden" id="changes-card">
   <h2>Desk changes <span id="changes-sub">live = in the running bot now; pending = not applied yet</span></h2>
   <div id="changes"></div>
@@ -394,5 +396,7 @@ function status(){
 }
 fetchData(); setInterval(fetchData,DATA_MS); setInterval(status,1000); setTimeout(fetchSpot,1500); setInterval(fetchSpot,10000);
 </script>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="scanner.js?v=1"></script>
 </body>
 </html>
