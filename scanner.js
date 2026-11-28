@@ -67,27 +67,33 @@ function render(){
       `<div class="sub" style="margin-top:6px">black tick = ${cap}¢ buy cap · no entries in the last ${d.no_entry_last_s}s · entry gate: `+(g.ok?`<b class="up">OPEN - would buy ${g.side} at ${c$(g.ask)}</b>`:`<b>blocked</b> - ${esc(g.reasons.join("; "))}`)+`</div>`}
   else $("#sc-mkt").innerHTML='<div class="muted">Kalshi market not available right now</div>';
   $("#sc-setups").innerHTML=`<h2>Setups <span>armed = matches the current regime</span></h2>`+d.setups.map(s=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><b>${esc(s.name)}</b>${pill(s.state+(s.side?" → "+s.side:""),SC[s.state])}${s.active?pill("armed","pos"):""}</div><div class="sub">${esc(s.detail)}</div></div>`).join("");
-  const P=d.paper||{};
-  const rec=P.n?`${P.wins}-${P.losses}`:"0-0";
-  const pnlCls=P.pnl>0?"up":(P.pnl<0?"dn":"");
-  const pnlTxt=(P.pnl==null?"$0.00":((P.pnl>=0?"+$":"−$")+Math.abs(P.pnl).toFixed(2)));
-  let body="";
-  if(P.open){const o=P.open;body=`<div>Open paper: <b>buy ${esc(o.side)}</b> ${esc((o.ticker||"").slice(-4))} at ${c$(o.px)} (fee ${(o.fee||0).toFixed(3)}) · hold to settlement${o.bid!=null?" · bid now "+c$(o.bid):""}</div>`}
-  else if(P.pending){const q=P.pending;const left=Math.max(0,Math.round((q.until_ts||0)-Date.now()/1000));body=`<div>Waiting for first-minute ask to lock: would buy <b>${esc(q.side)}</b> ${esc((q.ticker||"").slice(-4))} · ${left}s left in the first minute${q.last_ask!=null?" · last quote "+c$(q.last_ask):""}</div>`}
-  else body='<div class="muted">No open paper trade. A 3× range fade in a ranging regime will be logged here (first-minute ask, 1 contract, hold to official settlement, no orders).</div>';
-  const rows=(P.recent||[]).slice(0,8).map(r=>{
-    const lab=r.type+(r.side?" "+r.side:"");
+  const P=d.paper||{}, legs=P.legs||{};
+  const row=(id,label)=>{const L=legs[id]||{};const rec=(L.n||L.wins||L.losses)?`${L.wins||0}–${L.losses||0}`:"0–0";
+    const pnl=L.pnl||0, pnlTxt=(pnl>=0?"+$":"−$")+Math.abs(pnl).toFixed(2);
+    const wr=L.wr!=null?Math.round(L.wr*100)+"%":"—";
+    const extra=[L.n?`${L.n} trade${L.n===1?"":"s"}`:null, L.skips?`${L.skips} skipped`:null, L.cancels?`${L.cancels} cancelled`:null].filter(Boolean).join(" · ");
+    return `<tr><td><b>${id}</b> ${esc(label)}</td><td class="r">${L.n||0}</td><td class="r">${rec}</td><td class="r">${wr}</td><td class="r ${pnl>0?"up":pnl<0?"dn":""}">${pnlTxt}</td></tr>`+(extra?``:``)};
+  const names={A:"open ask (~10s)",B:"first-minute ask",C:"48¢ rest (fill if printed ≤48¢ before 3 min left)"};
+  let live="";
+  (P.open||[]).forEach(o=>{live+=`<div>Open ${esc(o.leg||"")} paper: <b>buy ${esc(o.side)}</b> ${esc((o.ticker||"").slice(-4))} at ${c$(o.px)} (fee ${(o.fee||0).toFixed(3)}) · hold to settlement${o.bid!=null?" · bid now "+c$(o.bid):""}</div>`});
+  if(P.pending){const q=P.pending;live+=`<div>Window ${esc((q.ticker||"").slice(-4))}: waiting to lock ${q.a_locked?"":"A "}${q.b_locked?"":"B "}C=${esc(q.c_state||"watching")} · last quote ${q.last_ask!=null?c$(q.last_ask):"—"}</div>`}
+  if(!live) live='<div class="muted">No open paper trade. A 3× range fade will log A / B / C side by side (no orders).</div>';
+  const rows=(P.recent||[]).filter(r=>r.type!=="signal").slice(0,10).map(r=>{
+    const lab=(r.leg||"")+" "+(r.type||"");
     let txt="";
-    if(r.type==="settle") txt=`${esc((r.ticker||"").slice(-4))} ${c$(r.px)} → ${esc((r.result||"").toUpperCase())} · P&L ${(r.pnl>=0?"+":"")+(r.pnl||0).toFixed(2)}`;
-    else if(r.type==="entry") txt=`${esc((r.ticker||"").slice(-4))} at ${c$(r.px)} (fee ${(r.fee||0).toFixed(3)}, no order)`;
+    if(r.type==="settle") txt=`${esc((r.ticker||"").slice(-4))} ${esc(r.side||"")} @ ${c$(r.px)} → ${esc((r.result||"").toUpperCase())} · P&L ${(r.pnl>=0?"+":"")+(r.pnl||0).toFixed(2)}`;
+    else if(r.type==="entry") txt=`${esc((r.ticker||"").slice(-4))} ${esc(r.side||"")} at ${c$(r.px)} (fee ${(r.fee||0).toFixed(3)}, no order)`;
     else if(r.type==="skip") txt=`${esc((r.ticker||"").slice(-4))} skipped: ${esc((r.reason||"").replace(/_/g," "))}${r.ask!=null?" ("+c$(r.ask)+")":""}`;
-    else if(r.type==="signal") txt=`${esc((r.ticker||"").slice(-4))} 3× fade, buy ${esc(r.side)}`;
-    const cls=r.type==="settle"?(r.won?"win":"loss"):(r.type==="skip"?"warn":"");
-    return `<div class="it"><div class="h"><span class="tag ${cls}">${esc(lab)}</span><span class="t">${txt}</span><span class="tm">${r.ts?tm(r.ts):""}</span></div></div>`;
+    else if(r.type==="cancel") txt=`${esc((r.ticker||"").slice(-4))} 48¢ bid cancelled: ${esc((r.reason||"").replace(/_/g," "))}`;
+    const cls=r.type==="settle"?(r.won?"win":"loss"):(r.type==="skip"||r.type==="cancel"?"warn":"");
+    return `<div class="it"><div class="h"><span class="tag ${cls}">${esc(lab.trim())}</span><span class="t">${txt}</span><span class="tm">${r.ts?tm(r.ts):""}</span></div></div>`;
   }).join("");
-  $("#sc-paper").innerHTML=`<h2>Paper record · 3× range fade <span>1 contract · first-minute ask · hold to official settlement · no orders</span></h2>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px"><span style="font-size:22px;font-weight:650">${rec}</span><span class="${pnlCls}" style="font-size:22px;font-weight:650">${pnlTxt}</span><span class="sub">${P.n||0} settled${P.wr!=null?" · "+Math.round(P.wr*100)+"% WR":""}${P.skips?` · ${P.skips} skipped`:""}</span></div>
-    ${body}${rows?`<div class="feed" style="margin-top:8px">${rows}</div>`:""}`;
+  $("#sc-paper").innerHTML=`<h2>Paper track record · 3× range fade <span>A / B / C · 1 contract · official settlement · no orders</span></h2>
+    <div class="scroll"><table><thead><tr><th>Leg</th><th class="r">Trades</th><th class="r">W–L</th><th class="r">Win rate</th><th class="r">P&amp;L</th></tr></thead><tbody>
+    ${row("A",names.A)+row("B",names.B)+row("C",names.C)}</tbody></table></div>
+    <div class="sub" style="margin:8px 0">${esc(P.fee_note||"A/B taker fee 0.07·p·(1−p); C maker fee 0 if the series is quadratic.")}</div>
+    ${live}${rows?`<div class="feed" style="margin-top:8px">${rows}</div>`:""}`;
+
   $("#sc-pos").innerHTML=`<h2>Open positions <span>cash-out 90¢ (95¢ when confident) · TRAMA exit</span></h2>`+(d.positions.length?`<div class="scroll"><table><thead><tr><th>Market</th><th>Strategy</th><th>Side</th><th class="r">Entry</th><th class="r">Qty</th><th class="r">Bid now</th><th>Cash-out</th><th>Early exit</th></tr></thead><tbody>${d.positions.map(p=>`<tr><td>${esc(p.ticker.replace("KX","").replace("15M-26",""))}</td><td>${esc(p.strategy)}</td><td>${esc(p.side.toUpperCase())}</td><td class="r">${c$(p.entry)}</td><td class="r">${(+p.count).toFixed(1)}</td><td class="r">${c$(p.bid)}</td><td>90¢ / 95¢</td><td>${esc(p.trama_exit)}${p.trama_against?" "+pill("TRAMA against","neg"):""}${p.settling?" "+pill("settling"):""}</td></tr>`).join("")}</tbody></table></div>`:'<div class="muted">No open position. The bot is flat and scanning.</div>');
   $("#sc-feed").innerHTML=(d.events||[]).slice(0,12).map(e=>`<div class="it"><div class="h"><span class="tag ${e.kind==="gate"&&/ALLOWED/.test(e.text)?"win":e.kind==="gate"?"warn":""}">${esc(e.kind)}</span><span class="t">${esc(e.text)}</span><span class="tm">${tm(e.ts)}</span></div></div>`).join("")||'<div class="muted">no decisions logged yet</div>';
   $("#sc-foot").textContent="Read-only: this panel and its server use public market data only and place no orders. The 3× range fade is paper-logged at the first-minute Kalshi ask (skipped above 75¢) and held to the official result. Candles are Coinbase BTC-USD (Kalshi settles on CF Benchmarks, so the two can differ by a few dollars). Trend-break entries are off; breaks are still drawn.";
