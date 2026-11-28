@@ -18,6 +18,7 @@ card.innerHTML=`<h2>Live scanner · BTC 15-minute <span id="sc-age">connecting�
 <div id="sc-nums" class="grid" style="margin-top:0"></div>
 <div id="sc-mkt" style="margin-top:16px"></div>
 <div id="sc-setups" style="margin-top:16px"></div>
+<div id="sc-paper" style="margin-top:16px"></div>
 <div id="sc-pos" style="margin-top:16px"></div>
 <h2 style="margin-top:18px">Recent scanner decisions <span>state changes only</span></h2><div class="feed" id="sc-feed"></div>
 <div class="sub" id="sc-foot" style="margin-top:10px"></div>`;
@@ -58,7 +59,7 @@ function render(){
   const kv=(k,v,s)=>`<div class="kv"><div class="k">${k}</div><div class="v">${v}</div>${s?`<div class="sub">${s}</div>`:""}</div>`;
   $("#sc-nums").innerHTML=kv("Resistance",rs?"$"+n0(rs.level):"--",rs?`${rs.usd>=0?"$"+n0(rs.usd)+" above price":"price is $"+n0(-rs.usd)+" through it"} · ${rs.bp}bp · ${rs.atr} ATR`:"")+
     kv("Support",sp?"$"+n0(sp.level):"--",sp?`${sp.usd>=0?"$"+n0(sp.usd)+" below price":"price is $"+n0(-sp.usd)+" through it"} · ${sp.bp}bp · ${sp.atr} ATR`:"")+
-    kv("Big-candle trigger",`${bg.ratio.toFixed(1)}× / 2.0×`,`last closed body $${n0(Math.abs(bg.body))} vs trigger $${n0(bg.thr)}`+(fp!=null?` · forming candle at ${fp}% of trigger`:""))+
+    kv("Big-candle trigger",`${bg.ratio.toFixed(1)}× / ${(d.rules&&d.rules.big&&d.rules.big.mult)||3}×`,`last closed body $${n0(Math.abs(bg.body))} vs trigger $${n0(bg.thr)}`+(fp!=null?` · forming candle at ${fp}% of trigger`:""))+
     kv("Volume osc (need >20)",d.volosc,"LuxAlgo vol EMA5/EMA10 on last closed bar");
   const m=d.market, g=d.gate;
   if(m){const cap=d.cap*100, row=(lab,bid,ask)=>{const over=ask!=null&&ask*100>cap;return `<div class="wb" style="grid-template-columns:70px 1fr 150px"><span>${lab}</span><div class="t" style="height:14px"><i style="left:0;width:${Math.round((ask||0)*100)}%;background:${over?"var(--red)":"var(--accent)"};opacity:.55"></i><em style="left:${cap}%;width:2px;background:var(--txt)" title="75¢ cap"></em></div><span>bid ${c$(bid)} · ask <b class="${over?"dn":""}">${c$(ask)}</b>${over?" ✕":""}</span></div>`};
@@ -66,9 +67,30 @@ function render(){
       `<div class="sub" style="margin-top:6px">black tick = ${cap}¢ buy cap · no entries in the last ${d.no_entry_last_s}s · entry gate: `+(g.ok?`<b class="up">OPEN - would buy ${g.side} at ${c$(g.ask)}</b>`:`<b>blocked</b> - ${esc(g.reasons.join("; "))}`)+`</div>`}
   else $("#sc-mkt").innerHTML='<div class="muted">Kalshi market not available right now</div>';
   $("#sc-setups").innerHTML=`<h2>Setups <span>armed = matches the current regime</span></h2>`+d.setups.map(s=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><b>${esc(s.name)}</b>${pill(s.state+(s.side?" → "+s.side:""),SC[s.state])}${s.active?pill("armed","pos"):""}</div><div class="sub">${esc(s.detail)}</div></div>`).join("");
+  const P=d.paper||{};
+  const rec=P.n?`${P.wins}-${P.losses}`:"0-0";
+  const pnlCls=P.pnl>0?"up":(P.pnl<0?"dn":"");
+  const pnlTxt=(P.pnl==null?"$0.00":((P.pnl>=0?"+$":"−$")+Math.abs(P.pnl).toFixed(2)));
+  let body="";
+  if(P.open){const o=P.open;body=`<div>Open paper: <b>buy ${esc(o.side)}</b> ${esc((o.ticker||"").slice(-4))} at ${c$(o.px)} (fee ${(o.fee||0).toFixed(3)}) · hold to settlement${o.bid!=null?" · bid now "+c$(o.bid):""}</div>`}
+  else if(P.pending){const q=P.pending;const left=Math.max(0,Math.round((q.until_ts||0)-Date.now()/1000));body=`<div>Waiting for first-minute ask to lock: would buy <b>${esc(q.side)}</b> ${esc((q.ticker||"").slice(-4))} · ${left}s left in the first minute${q.last_ask!=null?" · last quote "+c$(q.last_ask):""}</div>`}
+  else body='<div class="muted">No open paper trade. A 3× range fade in a ranging regime will be logged here (first-minute ask, 1 contract, hold to official settlement, no orders).</div>';
+  const rows=(P.recent||[]).slice(0,8).map(r=>{
+    const lab=r.type+(r.side?" "+r.side:"");
+    let txt="";
+    if(r.type==="settle") txt=`${esc((r.ticker||"").slice(-4))} ${c$(r.px)} → ${esc((r.result||"").toUpperCase())} · P&L ${(r.pnl>=0?"+":"")+(r.pnl||0).toFixed(2)}`;
+    else if(r.type==="entry") txt=`${esc((r.ticker||"").slice(-4))} at ${c$(r.px)} (fee ${(r.fee||0).toFixed(3)}, no order)`;
+    else if(r.type==="skip") txt=`${esc((r.ticker||"").slice(-4))} skipped: ${esc((r.reason||"").replace(/_/g," "))}${r.ask!=null?" ("+c$(r.ask)+")":""}`;
+    else if(r.type==="signal") txt=`${esc((r.ticker||"").slice(-4))} 3× fade, buy ${esc(r.side)}`;
+    const cls=r.type==="settle"?(r.won?"win":"loss"):(r.type==="skip"?"warn":"");
+    return `<div class="it"><div class="h"><span class="tag ${cls}">${esc(lab)}</span><span class="t">${txt}</span><span class="tm">${r.ts?tm(r.ts):""}</span></div></div>`;
+  }).join("");
+  $("#sc-paper").innerHTML=`<h2>Paper record · 3× range fade <span>1 contract · first-minute ask · hold to official settlement · no orders</span></h2>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px"><span style="font-size:22px;font-weight:650">${rec}</span><span class="${pnlCls}" style="font-size:22px;font-weight:650">${pnlTxt}</span><span class="sub">${P.n||0} settled${P.wr!=null?" · "+Math.round(P.wr*100)+"% WR":""}${P.skips?` · ${P.skips} skipped`:""}</span></div>
+    ${body}${rows?`<div class="feed" style="margin-top:8px">${rows}</div>`:""}`;
   $("#sc-pos").innerHTML=`<h2>Open positions <span>cash-out 90¢ (95¢ when confident) · TRAMA exit</span></h2>`+(d.positions.length?`<div class="scroll"><table><thead><tr><th>Market</th><th>Strategy</th><th>Side</th><th class="r">Entry</th><th class="r">Qty</th><th class="r">Bid now</th><th>Cash-out</th><th>Early exit</th></tr></thead><tbody>${d.positions.map(p=>`<tr><td>${esc(p.ticker.replace("KX","").replace("15M-26",""))}</td><td>${esc(p.strategy)}</td><td>${esc(p.side.toUpperCase())}</td><td class="r">${c$(p.entry)}</td><td class="r">${(+p.count).toFixed(1)}</td><td class="r">${c$(p.bid)}</td><td>90¢ / 95¢</td><td>${esc(p.trama_exit)}${p.trama_against?" "+pill("TRAMA against","neg"):""}${p.settling?" "+pill("settling"):""}</td></tr>`).join("")}</tbody></table></div>`:'<div class="muted">No open position. The bot is flat and scanning.</div>');
   $("#sc-feed").innerHTML=(d.events||[]).slice(0,12).map(e=>`<div class="it"><div class="h"><span class="tag ${e.kind==="gate"&&/ALLOWED/.test(e.text)?"win":e.kind==="gate"?"warn":""}">${esc(e.kind)}</span><span class="t">${esc(e.text)}</span><span class="tm">${tm(e.ts)}</span></div></div>`).join("")||'<div class="muted">no decisions logged yet</div>';
-  $("#sc-foot").textContent="Read-only: this panel and its server use public market data only and place no orders. Candles are Coinbase BTC-USD (Kalshi settles on CF Benchmarks, so the two can differ by a few dollars). Signals are what the chart rules WOULD do - no live chart trader is enabled yet.";
+  $("#sc-foot").textContent="Read-only: this panel and its server use public market data only and place no orders. The 3× range fade is paper-logged at the first-minute Kalshi ask (skipped above 75¢) and held to the official result. Candles are Coinbase BTC-USD (Kalshi settles on CF Benchmarks, so the two can differ by a few dollars). Trend-break entries are off; breaks are still drawn.";
   drawChart(d); tick();
 }
 function tick(){
